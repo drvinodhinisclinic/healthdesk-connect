@@ -1,43 +1,55 @@
+import { useQuery } from "@tanstack/react-query";
 import { Users, Stethoscope, ClipboardList, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { dashboardAPI, DashboardStats, RecentActivity } from "@/lib/api";
+import { toast } from "sonner";
+import { useEffect } from "react";
 
 const Dashboard = () => {
-  const stats = [
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<DashboardStats>({
+    queryKey: ['dashboard-stats'],
+    queryFn: dashboardAPI.getStats,
+  });
+
+  const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useQuery<RecentActivity[]>({
+    queryKey: ['dashboard-activity'],
+    queryFn: dashboardAPI.getRecentActivity,
+  });
+
+  useEffect(() => {
+    if (statsError) toast.error("Failed to load dashboard statistics");
+    if (activitiesError) toast.error("Failed to load recent activities");
+  }, [statsError, activitiesError]);
+
+  const statsConfig = [
     {
       title: "Total Patients",
-      value: "1,247",
+      value: stats?.totalPatients || 0,
       icon: Users,
-      trend: "+12% from last month",
+      trend: stats?.patientTrend || "Loading...",
       color: "text-primary",
     },
     {
       title: "Active Doctors",
-      value: "23",
+      value: stats?.activeDoctors || 0,
       icon: Stethoscope,
-      trend: "2 new this month",
+      trend: "Registered",
       color: "text-secondary",
     },
     {
       title: "Today's Visits",
-      value: "45",
+      value: stats?.todayVisits || 0,
       icon: ClipboardList,
-      trend: "15 completed",
+      trend: stats?.visitTrend || "Loading...",
       color: "text-primary",
     },
     {
       title: "Clinic Locations",
-      value: "5",
+      value: stats?.totalLocations || 0,
       icon: MapPin,
       trend: "All active",
       color: "text-secondary",
     },
-  ];
-
-  const recentActivities = [
-    { patient: "John Doe", action: "New visit recorded", time: "10 min ago", doctor: "Dr. Smith" },
-    { patient: "Jane Smith", action: "Follow-up scheduled", time: "25 min ago", doctor: "Dr. Johnson" },
-    { patient: "Mike Brown", action: "Prescription updated", time: "1 hour ago", doctor: "Dr. Williams" },
-    { patient: "Sarah Davis", action: "New patient registered", time: "2 hours ago", doctor: "Dr. Martinez" },
   ];
 
   return (
@@ -49,7 +61,7 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => {
+          {statsConfig.map((stat, index) => {
             const Icon = stat.icon;
             return (
               <Card 
@@ -66,7 +78,9 @@ const Dashboard = () => {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-foreground mb-1">{stat.value}</div>
+                  <div className="text-3xl font-bold text-foreground mb-1">
+                    {statsLoading ? "..." : stat.value}
+                  </div>
                   <p className="text-xs text-muted-foreground">{stat.trend}</p>
                 </CardContent>
               </Card>
@@ -79,23 +93,31 @@ const Dashboard = () => {
             <CardTitle className="text-xl font-semibold text-foreground">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentActivities.map((activity, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-center justify-between p-4 bg-accent/50 rounded-lg hover:bg-accent transition-colors duration-200"
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{activity.patient}</p>
-                    <p className="text-sm text-muted-foreground">{activity.action}</p>
+            {activitiesLoading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading activities...</div>
+            ) : activities && activities.length > 0 ? (
+              <div className="space-y-4">
+                {activities.map((activity) => (
+                  <div 
+                    key={activity.id} 
+                    className="flex items-center justify-between p-4 bg-accent/50 rounded-lg hover:bg-accent transition-colors duration-200"
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground">{activity.patientName}</p>
+                      <p className="text-sm text-muted-foreground">{activity.action}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-primary">{activity.doctorName}</p>
+                      <p className="text-xs text-muted-foreground">{activity.time}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-primary">{activity.doctor}</p>
-                    <p className="text-xs text-muted-foreground">{activity.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No recent activities found
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
