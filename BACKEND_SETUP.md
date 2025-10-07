@@ -48,6 +48,8 @@ npm install express mysql2 cors dotenv
 
 ### 2. Create server.js
 
+**IMPORTANT:** Copy only the JavaScript code below (WITHOUT the \`\`\`javascript line and closing \`\`\`). The backticks are just markdown formatting.
+
 \`\`\`javascript
 const express = require('express');
 const mysql = require('mysql2');
