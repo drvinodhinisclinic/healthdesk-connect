@@ -1,17 +1,105 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Calendar, DollarSign, FileText } from "lucide-react";
-import { visitAPI, Visit } from "@/lib/api";
+import { visitAPI, Visit, patientAPI, doctorAPI, locationAPI } from "@/lib/api";
 import { toast } from "sonner";
-import { useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const visitSchema = z.object({
+  patientID: z.string().min(1, "Patient is required"),
+  doctorID: z.string().min(1, "Doctor is required"),
+  clinicLocationID: z.string().min(1, "Location is required"),
+  visitTypeID: z.string().min(1, "Visit type is required"),
+  DoctorNotes: z.string().min(1, "Doctor notes are required"),
+  Followup: z.string().optional(),
+  Fee: z.string().min(1, "Fee is required").transform((val) => parseFloat(val)),
+});
+
+type VisitFormData = z.infer<typeof visitSchema>;
 
 const Visits = () => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
+
   const { data: visits, isLoading, error } = useQuery<Visit[]>({
     queryKey: ['visits'],
     queryFn: visitAPI.getAll,
   });
+
+  const { data: patients } = useQuery({
+    queryKey: ['patients'],
+    queryFn: patientAPI.getAll,
+  });
+
+  const { data: doctors } = useQuery({
+    queryKey: ['doctors'],
+    queryFn: doctorAPI.getAll,
+  });
+
+  const { data: locations } = useQuery({
+    queryKey: ['locations'],
+    queryFn: locationAPI.getAll,
+  });
+
+  const form = useForm<VisitFormData>({
+    resolver: zodResolver(visitSchema),
+    defaultValues: {
+      patientID: "",
+      doctorID: "",
+      clinicLocationID: "",
+      visitTypeID: "1",
+      DoctorNotes: "",
+      Followup: "",
+      Fee: "" as any,
+    },
+  });
+
+  const createVisitMutation = useMutation({
+    mutationFn: visitAPI.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      toast.success("Visit added successfully");
+      setIsDialogOpen(false);
+      form.reset();
+    },
+    onError: () => {
+      toast.error("Failed to add visit");
+    },
+  });
+
+  const onSubmit = (data: VisitFormData) => {
+    createVisitMutation.mutate(data as any);
+  };
 
   useEffect(() => {
     if (error) toast.error("Failed to load visits");
@@ -37,10 +125,192 @@ const Visits = () => {
             <h1 className="text-4xl font-bold text-foreground mb-2">Visits</h1>
             <p className="text-muted-foreground">Track patient visits and appointments</p>
           </div>
-          <Button className="bg-gradient-primary hover:opacity-90 transition-opacity shadow-elevated">
-            <Plus className="w-4 h-4 mr-2" />
-            New Visit
-          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-primary hover:opacity-90 transition-opacity shadow-elevated">
+                <Plus className="w-4 h-4 mr-2" />
+                New Visit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Visit</DialogTitle>
+                <DialogDescription>
+                  Record a new patient visit with details.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="patientID"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Patient</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select patient" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {patients?.map((patient) => (
+                                <SelectItem key={patient.patientid} value={patient.patientid.toString()}>
+                                  {patient.Name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="doctorID"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Doctor</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select doctor" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {doctors?.map((doctor) => (
+                                <SelectItem key={doctor.doctorID} value={doctor.doctorID.toString()}>
+                                  {doctor.Name} - {doctor.Speciality}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="clinicLocationID"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Clinic Location</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select location" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {locations?.map((location) => (
+                                <SelectItem key={location.LocationID} value={location.LocationID.toString()}>
+                                  {location.LocationName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="visitTypeID"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Visit Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select visit type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="1">Regular Checkup</SelectItem>
+                              <SelectItem value="2">Follow-up</SelectItem>
+                              <SelectItem value="3">Emergency</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="DoctorNotes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Doctor Notes</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
+                            className="min-h-[100px]"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="Fee"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Consultation Fee</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" placeholder="500.00" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="Followup"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Follow-up Date (Optional)</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-gradient-primary hover:opacity-90"
+                      disabled={createVisitMutation.isPending}
+                    >
+                      {createVisitMutation.isPending ? "Adding..." : "Add Visit"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {isLoading ? (
