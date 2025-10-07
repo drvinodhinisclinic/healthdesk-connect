@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,14 +7,79 @@ import { Plus, Search, Phone, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { patientAPI, Patient } from "@/lib/api";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+
+const patientSchema = z.object({
+  Name: z.string().trim().min(1, "Name is required").max(50, "Name must be less than 50 characters"),
+  DOB: z.string().min(1, "Date of birth is required"),
+  Phone: z.string().trim().regex(/^\d{10}$/, "Phone must be exactly 10 digits"),
+  Height: z.string().min(1, "Height is required").transform((val) => parseInt(val, 10)),
+  Weight: z.string().min(1, "Weight is required").transform((val) => parseFloat(val)),
+  Address: z.string().trim().min(1, "Address is required").max(100, "Address must be less than 100 characters"),
+  Remarks: z.string().max(100, "Remarks must be less than 100 characters").optional(),
+});
+
+type PatientFormData = z.infer<typeof patientSchema>;
 
 const Patients = () => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: patients, isLoading, error } = useQuery<Patient[]>({
     queryKey: ['patients'],
     queryFn: patientAPI.getAll,
   });
+
+  const form = useForm<PatientFormData>({
+    resolver: zodResolver(patientSchema),
+    defaultValues: {
+      Name: "",
+      DOB: "",
+      Phone: "",
+      Height: "" as any,
+      Weight: "" as any,
+      Address: "",
+      Remarks: "",
+    },
+  });
+
+  const createPatientMutation = useMutation({
+    mutationFn: patientAPI.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+      toast.success("Patient added successfully");
+      setIsDialogOpen(false);
+      form.reset();
+    },
+    onError: () => {
+      toast.error("Failed to add patient");
+    },
+  });
+
+  const onSubmit = (data: PatientFormData) => {
+    createPatientMutation.mutate(data as any);
+  };
 
   useEffect(() => {
     if (error) toast.error("Failed to load patients");
@@ -44,10 +109,144 @@ const Patients = () => {
             <h1 className="text-4xl font-bold text-foreground mb-2">Patients</h1>
             <p className="text-muted-foreground">Manage patient records and information</p>
           </div>
-          <Button className="bg-gradient-primary hover:opacity-90 transition-opacity shadow-elevated">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Patient
-          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-primary hover:opacity-90 transition-opacity shadow-elevated">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Patient
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Patient</DialogTitle>
+                <DialogDescription>
+                  Enter patient information to create a new record.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="Name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="John Doe" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="DOB"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Date of Birth</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="Phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone Number</FormLabel>
+                          <FormControl>
+                            <Input placeholder="1234567890" maxLength={10} {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="Height"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Height (cm)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="170" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="Weight"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Weight (kg)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.1" placeholder="70.5" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="Address"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Address</FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="123 Main St, City, State" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="Remarks"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Remarks (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea placeholder="Any additional notes..." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="flex justify-end gap-3 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-gradient-primary hover:opacity-90"
+                      disabled={createPatientMutation.isPending}
+                    >
+                      {createPatientMutation.isPending ? "Adding..." : "Add Patient"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <Card className="mb-6 shadow-card animate-fade-in" style={{ animationDelay: "100ms" }}>
