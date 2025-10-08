@@ -35,6 +35,9 @@ You need to create a Node.js/Express backend with the following endpoints:
 - `GET /api/locations` - Get all clinic locations
 - `GET /api/locations/:id` - Get location by ID
 
+### Visit Type Endpoints
+- `GET /api/visittypes` - Get all visit types
+
 ## Sample Express Backend Setup
 
 ### 1. Install Dependencies
@@ -201,6 +204,14 @@ app.get('/api/visits', (req, res) => {
 // ===== LOCATION ENDPOINTS =====
 app.get('/api/locations', (req, res) => {
   db.query('SELECT * FROM tblcliniclocation', (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+// ===== VISIT TYPE ENDPOINTS =====
+app.get('/api/visittypes', (req, res) => {
+  db.query('SELECT * FROM tblvisittype ORDER BY visitTypeID', (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(results);
   });
