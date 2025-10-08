@@ -261,13 +261,13 @@ const Visits = () => {
                                 <SelectValue placeholder="Select visit type" />
                               </SelectTrigger>
                             </FormControl>
-                            <SelectContent>
-                              {visitTypes?.map((type) => (
-                                <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
-                                  {type.visitTypeName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
+                  <SelectContent>
+                    {visitTypes?.map((type) => (
+                      <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
+                        {type.Description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                           </Select>
                           <FormMessage />
                         </FormItem>

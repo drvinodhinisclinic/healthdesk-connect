@@ -136,8 +136,7 @@ export interface Visit {
 
 export interface VisitType {
   visitTypeID: number;
-  visitTypeName: string;
-  lastModified: string;
+  Description: string;
 }
 
 export interface ClinicLocation {
