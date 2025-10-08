@@ -75,10 +75,17 @@ const Visits = () => {
     queryFn: locationAPI.getAll,
   });
 
-  const { data: visitTypes } = useQuery({
+  const { data: visitTypes, isLoading: isLoadingVisitTypes, error: visitTypesError } = useQuery({
     queryKey: ['visitTypes'],
     queryFn: visitTypeAPI.getAll,
   });
+
+  // Debug: Log visit types data
+  useEffect(() => {
+    console.log('Visit Types Data:', visitTypes);
+    console.log('Visit Types Loading:', isLoadingVisitTypes);
+    console.log('Visit Types Error:', visitTypesError);
+  }, [visitTypes, isLoadingVisitTypes, visitTypesError]);
 
   const form = useForm<VisitFormData>({
     resolver: zodResolver(visitSchema),
@@ -262,11 +269,21 @@ const Visits = () => {
                               </SelectTrigger>
                             </FormControl>
                   <SelectContent>
-                    {visitTypes?.map((type) => (
-                      <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
-                        {type.Description}
-                      </SelectItem>
-                    ))}
+                    {isLoadingVisitTypes && (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    )}
+                    {visitTypesError && (
+                      <SelectItem value="error" disabled>Error loading visit types</SelectItem>
+                    )}
+                    {visitTypes && visitTypes.length > 0 ? (
+                      visitTypes.map((type) => (
+                        <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
+                          {type.Description}
+                        </SelectItem>
+                      ))
+                    ) : !isLoadingVisitTypes && !visitTypesError ? (
+                      <SelectItem value="empty" disabled>No visit types found</SelectItem>
+                    ) : null}
                   </SelectContent>
                           </Select>
                           <FormMessage />
