@@ -83,6 +83,11 @@ export const locationAPI = {
   getById: (id: number) => fetchAPI<ClinicLocation>(`/locations/${id}`),
 };
 
+// Visit Type API
+export const visitTypeAPI = {
+  getAll: () => fetchAPI<VisitType[]>('/visittypes'),
+};
+
 // Dashboard stats API
 export const dashboardAPI = {
   getStats: () => fetchAPI<DashboardStats>('/dashboard/stats'),
@@ -113,19 +118,26 @@ export interface Doctor {
 export interface Visit {
   visitID: number;
   patientID: number;
-  prescriptionImage1?: Blob;
-  prescriptionImage2?: Blob;
+  prescriptionImage1?: string;
+  prescriptionImage2?: string;
   DoctorNotes: string;
   Followup: string;
   Fee: number;
   doctorID: number;
   visitTypeID: number;
   clinicLocationID: number;
+  isCompleted: boolean;
   // Joined data
   patientName?: string;
   doctorName?: string;
   locationName?: string;
   visitTypeName?: string;
+}
+
+export interface VisitType {
+  visitTypeID: number;
+  visitTypeName: string;
+  lastModified: string;
 }
 
 export interface ClinicLocation {

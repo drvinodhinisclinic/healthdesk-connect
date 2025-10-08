@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, DollarSign, FileText } from "lucide-react";
-import { visitAPI, Visit, patientAPI, doctorAPI, locationAPI } from "@/lib/api";
+import { Plus, Calendar, DollarSign, FileText, Image as ImageIcon, CheckCircle2 } from "lucide-react";
+import { visitAPI, Visit, patientAPI, doctorAPI, locationAPI, visitTypeAPI } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -43,12 +43,16 @@ const visitSchema = z.object({
   DoctorNotes: z.string().min(1, "Doctor notes are required"),
   Followup: z.string().optional(),
   Fee: z.string().min(1, "Fee is required").transform((val) => parseFloat(val)),
+  prescriptionImage1: z.any().optional(),
+  prescriptionImage2: z.any().optional(),
 });
 
 type VisitFormData = z.infer<typeof visitSchema>;
 
 const Visits = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const queryClient = useQueryClient();
 
   const { data: visits, isLoading, error } = useQuery<Visit[]>({
@@ -69,6 +73,11 @@ const Visits = () => {
   const { data: locations } = useQuery({
     queryKey: ['locations'],
     queryFn: locationAPI.getAll,
+  });
+
+  const { data: visitTypes } = useQuery({
+    queryKey: ['visitTypes'],
+    queryFn: visitTypeAPI.getAll,
   });
 
   const form = useForm<VisitFormData>({
@@ -97,9 +106,30 @@ const Visits = () => {
     },
   });
 
-  const onSubmit = (data: VisitFormData) => {
-    createVisitMutation.mutate(data as any);
+  const onSubmit = async (data: VisitFormData) => {
+    const formData = new FormData();
+    Object.keys(data).forEach(key => {
+      if (key === 'prescriptionImage1' || key === 'prescriptionImage2') {
+        if (data[key] && data[key][0]) {
+          formData.append(key, data[key][0]);
+        }
+      } else {
+        formData.append(key, data[key]);
+      }
+    });
+    createVisitMutation.mutate(formData as any);
   };
+
+  const markCompletedMutation = useMutation({
+    mutationFn: (id: number) => visitAPI.update(id, { isCompleted: true } as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      toast.success("Visit marked as completed");
+    },
+    onError: () => {
+      toast.error("Failed to mark visit as completed");
+    },
+  });
 
   useEffect(() => {
     if (error) toast.error("Failed to load visits");
@@ -232,9 +262,11 @@ const Visits = () => {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="1">Regular Checkup</SelectItem>
-                              <SelectItem value="2">Follow-up</SelectItem>
-                              <SelectItem value="3">Emergency</SelectItem>
+                              {visitTypes?.map((type) => (
+                                <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
+                                  {type.visitTypeName}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -291,6 +323,46 @@ const Visits = () => {
                     />
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="prescriptionImage1"
+                      render={({ field: { value, onChange, ...field } }) => (
+                        <FormItem>
+                          <FormLabel>Prescription Image 1 (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => onChange(e.target.files)}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="prescriptionImage2"
+                      render={({ field: { value, onChange, ...field } }) => (
+                        <FormItem>
+                          <FormLabel>Prescription Image 2 (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => onChange(e.target.files)}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <div className="flex justify-end gap-3 pt-4">
                     <Button
                       type="button"
@@ -335,9 +407,17 @@ const Visits = () => {
                         {visit.doctorName || `Doctor ID: ${visit.doctorID}`}
                       </p>
                     </div>
-                    <Badge className={getStatusColor(getStatusFromDate(visit.Followup))}>
-                      {getStatusFromDate(visit.Followup)}
-                    </Badge>
+                    <div className="flex gap-2">
+                      <Badge className={getStatusColor(getStatusFromDate(visit.Followup))}>
+                        {getStatusFromDate(visit.Followup)}
+                      </Badge>
+                      {visit.isCompleted && (
+                        <Badge className="bg-green-500 text-white">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Completed
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -378,12 +458,24 @@ const Visits = () => {
                   </div>
 
                   <div className="flex gap-2 pt-2">
-                    <Button variant="outline" className="flex-1 border-primary text-primary hover:bg-accent">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 border-primary text-primary hover:bg-accent"
+                      onClick={() => {
+                        setSelectedVisit(visit);
+                        setViewDialogOpen(true);
+                      }}
+                    >
                       View Details
                     </Button>
-                    {getStatusFromDate(visit.Followup) === "Scheduled" && (
-                      <Button variant="outline" className="flex-1">
-                        Reschedule
+                    {!visit.isCompleted && (
+                      <Button 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => markCompletedMutation.mutate(visit.visitID)}
+                        disabled={markCompletedMutation.isPending}
+                      >
+                        Mark Completed
                       </Button>
                     )}
                   </div>
@@ -400,6 +492,87 @@ const Visits = () => {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Visit Details</DialogTitle>
+              <DialogDescription>
+                Complete visit information and prescription images
+              </DialogDescription>
+            </DialogHeader>
+            {selectedVisit && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Patient</p>
+                    <p className="font-medium">{selectedVisit.patientName || `ID: ${selectedVisit.patientID}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Doctor</p>
+                    <p className="font-medium">{selectedVisit.doctorName || `ID: ${selectedVisit.doctorID}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Location</p>
+                    <p className="font-medium">{selectedVisit.locationName || `ID: ${selectedVisit.clinicLocationID}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Visit Type</p>
+                    <p className="font-medium">{selectedVisit.visitTypeName || `ID: ${selectedVisit.visitTypeID}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Fee</p>
+                    <p className="font-medium">₹{selectedVisit.Fee}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Follow-up Date</p>
+                    <p className="font-medium">{new Date(selectedVisit.Followup).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Doctor's Notes</p>
+                  <p className="text-foreground bg-muted p-3 rounded-md">{selectedVisit.DoctorNotes}</p>
+                </div>
+
+                {(selectedVisit.prescriptionImage1 || selectedVisit.prescriptionImage2) && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" />
+                      Prescription Images
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                      {selectedVisit.prescriptionImage1 && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <img 
+                            src={selectedVisit.prescriptionImage1} 
+                            alt="Prescription 1" 
+                            className="w-full h-auto"
+                          />
+                        </div>
+                      )}
+                      {selectedVisit.prescriptionImage2 && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <img 
+                            src={selectedVisit.prescriptionImage2} 
+                            alt="Prescription 2" 
+                            className="w-full h-auto"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-4">
+                  <Button onClick={() => setViewDialogOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
