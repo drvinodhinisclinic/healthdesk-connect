@@ -27,8 +27,8 @@ You need to create a Node.js/Express backend with the following endpoints:
 ### Visit Endpoints
 - `GET /api/visits` - Get all visits (with JOIN to get patient, doctor, location names)
 - `GET /api/visits/:id` - Get visit by ID
-- `POST /api/visits` - Create new visit
-- `PUT /api/visits/:id` - Update visit
+- `POST /api/visits` - Create new visit (DoctorNotes and Fee are optional, isCompleted defaults to 0)
+- `PUT /api/visits/:id` - Update visit (Use this to complete a visit by setting isCompleted=1 with required DoctorNotes and Fee)
 - `DELETE /api/visits/:id` - Delete visit
 
 ### Location Endpoints
@@ -199,6 +199,56 @@ app.get('/api/visits', (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(results);
   });
+});
+
+app.post('/api/visits', (req, res) => {
+  const { patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2 } = req.body;
+  db.query(
+    'INSERT INTO tblvisits (patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2, isCompleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+    [patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes || null, Followup || null, Fee || null, prescriptionImage1 || null, prescriptionImage2 || null],
+    (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.status(201).json({ visitID: result.insertId, ...req.body });
+    }
+  );
+});
+
+app.put('/api/visits/:id', (req, res) => {
+  const { DoctorNotes, Fee, isCompleted, prescriptionImage1, prescriptionImage2 } = req.body;
+  const updates = [];
+  const values = [];
+  
+  if (DoctorNotes !== undefined) {
+    updates.push('DoctorNotes = ?');
+    values.push(DoctorNotes);
+  }
+  if (Fee !== undefined) {
+    updates.push('Fee = ?');
+    values.push(Fee);
+  }
+  if (isCompleted !== undefined) {
+    updates.push('isCompleted = ?');
+    values.push(isCompleted);
+  }
+  if (prescriptionImage1 !== undefined) {
+    updates.push('prescriptionImage1 = ?');
+    values.push(prescriptionImage1);
+  }
+  if (prescriptionImage2 !== undefined) {
+    updates.push('prescriptionImage2 = ?');
+    values.push(prescriptionImage2);
+  }
+  
+  values.push(req.params.id);
+  
+  db.query(
+    \`UPDATE tblvisits SET \${updates.join(', ')} WHERE visitID = ?\`,
+    values,
+    (err, result) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Visit updated successfully' });
+    }
+  );
 });
 
 // ===== LOCATION ENDPOINTS =====

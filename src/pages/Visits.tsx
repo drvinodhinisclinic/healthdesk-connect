@@ -40,18 +40,27 @@ const visitSchema = z.object({
   doctorID: z.string().min(1, "Doctor is required"),
   clinicLocationID: z.string().min(1, "Location is required"),
   visitTypeID: z.string().min(1, "Visit type is required"),
-  DoctorNotes: z.string().min(1, "Doctor notes are required"),
+  DoctorNotes: z.string().optional(),
   Followup: z.string().optional(),
-  Fee: z.string().min(1, "Fee is required").transform((val) => parseFloat(val)),
+  Fee: z.string().optional().transform((val) => val ? parseFloat(val) : undefined),
+  prescriptionImage1: z.any().optional(),
+  prescriptionImage2: z.any().optional(),
+});
+
+const completeVisitSchema = z.object({
+  DoctorNotes: z.string().min(1, "Doctor notes are required"),
+  Fee: z.string().min(1, "Consultation fee is required"),
   prescriptionImage1: z.any().optional(),
   prescriptionImage2: z.any().optional(),
 });
 
 type VisitFormData = z.infer<typeof visitSchema>;
+type CompleteVisitFormData = z.infer<typeof completeVisitSchema>;
 
 const Visits = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
   const queryClient = useQueryClient();
 
@@ -96,7 +105,15 @@ const Visits = () => {
       visitTypeID: "1",
       DoctorNotes: "",
       Followup: "",
-      Fee: "" as any,
+      Fee: undefined,
+    },
+  });
+
+  const completeForm = useForm<CompleteVisitFormData>({
+    resolver: zodResolver(completeVisitSchema),
+    defaultValues: {
+      DoctorNotes: "",
+      Fee: "",
     },
   });
 
@@ -127,16 +144,29 @@ const Visits = () => {
     createVisitMutation.mutate(formData as any);
   };
 
-  const markCompletedMutation = useMutation({
-    mutationFn: (id: number) => visitAPI.update(id, { isCompleted: true } as any),
+  const completeVisitMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: CompleteVisitFormData }) => 
+      visitAPI.update(id, { 
+        DoctorNotes: data.DoctorNotes,
+        Fee: parseFloat(data.Fee),
+        isCompleted: 1 
+      } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
-      toast.success("Visit marked as completed");
+      toast.success("Visit completed successfully");
+      setCompleteDialogOpen(false);
+      completeForm.reset();
     },
     onError: () => {
-      toast.error("Failed to mark visit as completed");
+      toast.error("Failed to complete visit");
     },
   });
+
+  const onCompleteSubmit = async (data: CompleteVisitFormData) => {
+    if (selectedVisit) {
+      completeVisitMutation.mutate({ id: selectedVisit.visitID, data });
+    }
+  };
 
   useEffect(() => {
     if (error) toast.error("Failed to load visits");
@@ -292,23 +322,23 @@ const Visits = () => {
                     />
                   </div>
 
-                  <FormField
-                    control={form.control}
-                    name="DoctorNotes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Doctor Notes</FormLabel>
-                        <FormControl>
-                          <Textarea 
-                            placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
-                            className="min-h-[100px]"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                    <FormField
+                      control={form.control}
+                      name="DoctorNotes"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Doctor Notes (Optional)</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
+                              className="min-h-[100px]"
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
@@ -316,7 +346,7 @@ const Visits = () => {
                       name="Fee"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Consultation Fee</FormLabel>
+                          <FormLabel>Consultation Fee (Optional)</FormLabel>
                           <FormControl>
                             <Input type="number" step="0.01" placeholder="500.00" {...field} />
                           </FormControl>
@@ -448,13 +478,6 @@ const Visits = () => {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center text-sm">
-                      <DollarSign className="w-4 h-4 mr-2 text-primary" />
-                      <div>
-                        <p className="text-muted-foreground text-xs">Fee</p>
-                        <p className="font-medium text-foreground">₹{visit.Fee}</p>
-                      </div>
-                    </div>
                   </div>
                   
                   {visit.DoctorNotes && (
@@ -463,6 +486,16 @@ const Visits = () => {
                       <div className="flex-1">
                         <p className="text-muted-foreground text-xs">Doctor's Notes</p>
                         <p className="text-foreground">{visit.DoctorNotes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {visit.Fee && (
+                    <div className="flex items-center text-sm">
+                      <DollarSign className="w-4 h-4 mr-2 text-primary" />
+                      <div>
+                        <p className="text-muted-foreground text-xs">Fee</p>
+                        <p className="font-medium text-foreground">₹{visit.Fee}</p>
                       </div>
                     </div>
                   )}
@@ -488,11 +521,15 @@ const Visits = () => {
                     {!visit.isCompleted && (
                       <Button 
                         variant="outline" 
-                        className="flex-1"
-                        onClick={() => markCompletedMutation.mutate(visit.visitID)}
-                        disabled={markCompletedMutation.isPending}
+                        className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+                        onClick={() => {
+                          setSelectedVisit(visit);
+                          completeForm.setValue('DoctorNotes', visit.DoctorNotes || '');
+                          completeForm.setValue('Fee', visit.Fee ? visit.Fee.toString() : '');
+                          setCompleteDialogOpen(true);
+                        }}
                       >
-                        Mark Completed
+                        Complete Visit
                       </Button>
                     )}
                   </div>
@@ -539,7 +576,7 @@ const Visits = () => {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Fee</p>
-                    <p className="font-medium">₹{selectedVisit.Fee}</p>
+                    <p className="font-medium">{selectedVisit.Fee ? `₹${selectedVisit.Fee}` : 'Not set'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Follow-up Date</p>
@@ -549,7 +586,7 @@ const Visits = () => {
 
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Doctor's Notes</p>
-                  <p className="text-foreground bg-muted p-3 rounded-md">{selectedVisit.DoctorNotes}</p>
+                  <p className="text-foreground bg-muted p-3 rounded-md">{selectedVisit.DoctorNotes || 'No notes added'}</p>
                 </div>
 
                 {(selectedVisit.prescriptionImage1 || selectedVisit.prescriptionImage2) && (
@@ -588,6 +625,109 @@ const Visits = () => {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Complete Visit</DialogTitle>
+              <DialogDescription>
+                Add doctor notes and consultation fee to complete this visit
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...completeForm}>
+              <form onSubmit={completeForm.handleSubmit(onCompleteSubmit)} className="space-y-4">
+                <FormField
+                  control={completeForm.control}
+                  name="DoctorNotes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Doctor Notes *</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
+                          className="min-h-[120px]"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={completeForm.control}
+                  name="Fee"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Consultation Fee *</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" placeholder="500.00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={completeForm.control}
+                    name="prescriptionImage1"
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <FormItem>
+                        <FormLabel>Prescription Image 1 (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => onChange(e.target.files)}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={completeForm.control}
+                    name="prescriptionImage2"
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <FormItem>
+                        <FormLabel>Prescription Image 2 (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => onChange(e.target.files)}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCompleteDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="bg-gradient-primary hover:opacity-90"
+                    disabled={completeVisitMutation.isPending}
+                  >
+                    {completeVisitMutation.isPending ? "Completing..." : "Complete Visit"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
