@@ -131,17 +131,18 @@ const Visits = () => {
   });
 
   const onSubmit = async (data: VisitFormData) => {
-    const formData = new FormData();
-    Object.keys(data).forEach(key => {
-      if (key === 'prescriptionImage1' || key === 'prescriptionImage2') {
-        if (data[key] && data[key][0]) {
-          formData.append(key, data[key][0]);
-        }
-      } else {
-        formData.append(key, data[key]);
-      }
-    });
-    createVisitMutation.mutate(formData as any);
+    const visitData = {
+      patientID: parseInt(data.patientID),
+      doctorID: parseInt(data.doctorID),
+      clinicLocationID: parseInt(data.clinicLocationID),
+      visitTypeID: parseInt(data.visitTypeID),
+      DoctorNotes: data.DoctorNotes || null,
+      Followup: data.Followup || null,
+      Fee: data.Fee || null,
+      prescriptionImage1: null,
+      prescriptionImage2: null,
+    };
+    createVisitMutation.mutate(visitData as any);
   };
 
   const completeVisitMutation = useMutation({
