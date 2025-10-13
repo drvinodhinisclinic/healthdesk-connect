@@ -72,6 +72,9 @@ const editVisitSchema = z.object({
 const completeVisitSchema = z.object({
   DoctorNotes: z.string().min(1, "Doctor notes are required"),
   Fee: z.string().min(1, "Consultation fee is required"),
+  Followup: z.string().optional(),
+  prescriptionImage1: z.any().optional(),
+  prescriptionImage2: z.any().optional(),
 });
 
 type VisitFormData = z.infer<typeof visitSchema>;
@@ -141,6 +144,7 @@ const Visits = () => {
     defaultValues: {
       DoctorNotes: "",
       Fee: "",
+      Followup: "",
     },
   });
 
@@ -176,6 +180,9 @@ const Visits = () => {
       visitAPI.update(id, { 
         DoctorNotes: data.DoctorNotes,
         Fee: parseFloat(data.Fee),
+        Followup: data.Followup || null,
+        prescriptionImage1: data.prescriptionImage1?.[0] ? 'image_data' : null,
+        prescriptionImage2: data.prescriptionImage2?.[0] ? 'image_data' : null,
         IsCompleted: 1 
       } as any),
     onSuccess: () => {
@@ -244,6 +251,7 @@ const Visits = () => {
     completeForm.reset({
       DoctorNotes: visit.DoctorNotes || "",
       Fee: visit.Fee ? visit.Fee.toString() : "",
+      Followup: visit.Followup || "",
     });
     setCompleteDialogOpen(true);
   };
@@ -819,11 +827,11 @@ const Visits = () => {
 
       {/* Complete Visit Dialog */}
       <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Complete Visit</DialogTitle>
             <DialogDescription>
-              Add final notes and fee to complete this visit.
+              Add final notes, fee, and prescriptions to complete this visit.
             </DialogDescription>
           </DialogHeader>
           <Form {...completeForm}>
@@ -846,19 +854,75 @@ const Visits = () => {
                 )}
               />
 
-              <FormField
-                control={completeForm.control}
-                name="Fee"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Consultation Fee *</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" placeholder="500.00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={completeForm.control}
+                  name="Fee"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Consultation Fee *</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" placeholder="500.00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={completeForm.control}
+                  name="Followup"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Follow-up Date (Optional)</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={completeForm.control}
+                  name="prescriptionImage1"
+                  render={({ field: { value, onChange, ...field } }) => (
+                    <FormItem>
+                      <FormLabel>Prescription Image 1 (Optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => onChange(e.target.files)}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={completeForm.control}
+                  name="prescriptionImage2"
+                  render={({ field: { value, onChange, ...field } }) => (
+                    <FormItem>
+                      <FormLabel>Prescription Image 2 (Optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => onChange(e.target.files)}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div className="flex justify-end gap-3 pt-4">
                 <Button
