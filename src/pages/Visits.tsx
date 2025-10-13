@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, DollarSign, FileText, Image as ImageIcon, CheckCircle2 } from "lucide-react";
-import { visitAPI, Visit, patientAPI, doctorAPI, locationAPI, visitTypeAPI } from "@/lib/api";
+import { Plus, Calendar, Edit, CheckCircle2, Clock, DollarSign, FileText } from "lucide-react";
+import { visitAPI, Visit, patientAPI, doctorAPI, locationAPI, visitTypeAPI, Patient } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,37 +34,60 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
+import { format } from "date-fns";
 
 const visitSchema = z.object({
   patientID: z.string().min(1, "Patient is required"),
   doctorID: z.string().min(1, "Doctor is required"),
   clinicLocationID: z.string().min(1, "Location is required"),
   visitTypeID: z.string().min(1, "Visit type is required"),
+  visitDate: z.string().min(1, "Visit date is required"),
   DoctorNotes: z.string().optional(),
-  Followup: z.string().optional(),
-  Fee: z.string().optional().transform((val) => val ? parseFloat(val) : undefined),
-  prescriptionImage1: z.any().optional(),
-  prescriptionImage2: z.any().optional(),
+});
+
+const editVisitSchema = z.object({
+  patientID: z.string().min(1, "Patient is required"),
+  doctorID: z.string().min(1, "Doctor is required"),
+  clinicLocationID: z.string().min(1, "Location is required"),
+  visitTypeID: z.string().min(1, "Visit type is required"),
+  visitDate: z.string().min(1, "Visit date is required"),
+  DoctorNotes: z.string().optional(),
 });
 
 const completeVisitSchema = z.object({
   DoctorNotes: z.string().min(1, "Doctor notes are required"),
   Fee: z.string().min(1, "Consultation fee is required"),
-  prescriptionImage1: z.any().optional(),
-  prescriptionImage2: z.any().optional(),
 });
 
 type VisitFormData = z.infer<typeof visitSchema>;
+type EditVisitFormData = z.infer<typeof editVisitSchema>;
 type CompleteVisitFormData = z.infer<typeof completeVisitSchema>;
 
 const Visits = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
+  const [patientSearchOpen, setPatientSearchOpen] = useState(false);
+  const [editPatientSearchOpen, setEditPatientSearchOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: visits, isLoading, error } = useQuery<Visit[]>({
+  const { data: visits, isLoading } = useQuery<Visit[]>({
     queryKey: ['visits'],
     queryFn: visitAPI.getAll,
   });
@@ -84,17 +107,10 @@ const Visits = () => {
     queryFn: locationAPI.getAll,
   });
 
-  const { data: visitTypes, isLoading: isLoadingVisitTypes, error: visitTypesError } = useQuery({
+  const { data: visitTypes } = useQuery({
     queryKey: ['visitTypes'],
     queryFn: visitTypeAPI.getAll,
   });
-
-  // Debug: Log visit types data
-  useEffect(() => {
-    console.log('Visit Types Data:', visitTypes);
-    console.log('Visit Types Loading:', isLoadingVisitTypes);
-    console.log('Visit Types Error:', visitTypesError);
-  }, [visitTypes, isLoadingVisitTypes, visitTypesError]);
 
   const form = useForm<VisitFormData>({
     resolver: zodResolver(visitSchema),
@@ -103,9 +119,20 @@ const Visits = () => {
       doctorID: "",
       clinicLocationID: "",
       visitTypeID: "1",
+      visitDate: format(new Date(), "yyyy-MM-dd"),
       DoctorNotes: "",
-      Followup: "",
-      Fee: undefined,
+    },
+  });
+
+  const editForm = useForm<EditVisitFormData>({
+    resolver: zodResolver(editVisitSchema),
+    defaultValues: {
+      patientID: "",
+      doctorID: "",
+      clinicLocationID: "",
+      visitTypeID: "",
+      visitDate: "",
+      DoctorNotes: "",
     },
   });
 
@@ -130,27 +157,26 @@ const Visits = () => {
     },
   });
 
-  const onSubmit = async (data: VisitFormData) => {
-    const visitData = {
-      patientID: parseInt(data.patientID),
-      doctorID: parseInt(data.doctorID),
-      clinicLocationID: parseInt(data.clinicLocationID),
-      visitTypeID: parseInt(data.visitTypeID),
-      DoctorNotes: data.DoctorNotes || null,
-      Followup: data.Followup || null,
-      Fee: data.Fee || null,
-      prescriptionImage1: null,
-      prescriptionImage2: null,
-    };
-    createVisitMutation.mutate(visitData as any);
-  };
+  const updateVisitMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => 
+      visitAPI.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visits'] });
+      toast.success("Visit updated successfully");
+      setEditDialogOpen(false);
+      editForm.reset();
+    },
+    onError: () => {
+      toast.error("Failed to update visit");
+    },
+  });
 
   const completeVisitMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: CompleteVisitFormData }) => 
       visitAPI.update(id, { 
         DoctorNotes: data.DoctorNotes,
         Fee: parseFloat(data.Fee),
-        isCompleted: 1 
+        IsCompleted: 1 
       } as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits'] });
@@ -163,26 +189,136 @@ const Visits = () => {
     },
   });
 
+  const onSubmit = async (data: VisitFormData) => {
+    const visitData = {
+      patientID: parseInt(data.patientID),
+      doctorID: parseInt(data.doctorID),
+      clinicLocationID: parseInt(data.clinicLocationID),
+      visitTypeID: parseInt(data.visitTypeID),
+      visitDate: data.visitDate,
+      DoctorNotes: data.DoctorNotes || null,
+      Followup: null,
+      Fee: null,
+      prescriptionImage1: null,
+      prescriptionImage2: null,
+      IsCompleted: 0,
+    };
+    createVisitMutation.mutate(visitData as any);
+  };
+
+  const onEditSubmit = async (data: EditVisitFormData) => {
+    if (selectedVisit) {
+      const visitData = {
+        patientID: parseInt(data.patientID),
+        doctorID: parseInt(data.doctorID),
+        clinicLocationID: parseInt(data.clinicLocationID),
+        visitTypeID: parseInt(data.visitTypeID),
+        visitDate: data.visitDate,
+        DoctorNotes: data.DoctorNotes || null,
+      };
+      updateVisitMutation.mutate({ id: selectedVisit.visitID, data: visitData });
+    }
+  };
+
   const onCompleteSubmit = async (data: CompleteVisitFormData) => {
     if (selectedVisit) {
       completeVisitMutation.mutate({ id: selectedVisit.visitID, data });
     }
   };
 
-  useEffect(() => {
-    if (error) toast.error("Failed to load visits");
-  }, [error]);
-
-  const getStatusFromDate = (followupDate: string) => {
-    const today = new Date();
-    const followup = new Date(followupDate);
-    return followup > today ? "Scheduled" : "Completed";
+  const handleEditVisit = (visit: Visit) => {
+    setSelectedVisit(visit);
+    editForm.reset({
+      patientID: visit.patientID.toString(),
+      doctorID: visit.doctorID.toString(),
+      clinicLocationID: visit.clinicLocationID.toString(),
+      visitTypeID: visit.visitTypeID.toString(),
+      visitDate: visit.visitDate || format(new Date(), "yyyy-MM-dd"),
+      DoctorNotes: visit.DoctorNotes || "",
+    });
+    setEditDialogOpen(true);
   };
 
-  const getStatusColor = (status: string) => {
-    return status === "Completed" 
-      ? "bg-primary text-primary-foreground" 
-      : "bg-secondary text-secondary-foreground";
+  const handleCompleteVisit = (visit: Visit) => {
+    setSelectedVisit(visit);
+    completeForm.reset({
+      DoctorNotes: visit.DoctorNotes || "",
+      Fee: visit.Fee ? visit.Fee.toString() : "",
+    });
+    setCompleteDialogOpen(true);
+  };
+
+  // Group and sort visits
+  const pendingVisits = visits?.filter(v => v.IsCompleted === 0)
+    .sort((a, b) => {
+      const dateA = new Date(a.visitDate || 0).getTime();
+      const dateB = new Date(b.visitDate || 0).getTime();
+      return dateB - dateA;
+    }) || [];
+
+  const completedVisits = visits?.filter(v => v.IsCompleted === 1)
+    .sort((a, b) => {
+      const dateA = new Date(a.visitDate || 0).getTime();
+      const dateB = new Date(b.visitDate || 0).getTime();
+      return dateB - dateA;
+    }) || [];
+
+  const PatientCombobox = ({ 
+    value, 
+    onChange, 
+    open, 
+    setOpen 
+  }: { 
+    value: string; 
+    onChange: (value: string) => void;
+    open: boolean;
+    setOpen: (open: boolean) => void;
+  }) => {
+    const selectedPatient = patients?.find((p: Patient) => p.patientid.toString() === value);
+    
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between"
+          >
+            {selectedPatient ? selectedPatient.Name : "Select patient..."}
+            <Calendar className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search patient..." />
+            <CommandList>
+              <CommandEmpty>No patient found.</CommandEmpty>
+              <CommandGroup>
+                {patients?.map((patient: Patient) => (
+                  <CommandItem
+                    key={patient.patientid}
+                    value={patient.Name}
+                    onSelect={() => {
+                      onChange(patient.patientid.toString());
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === patient.patientid.toString() ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {patient.Name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    );
   };
 
   return (
@@ -209,38 +345,44 @@ const Visits = () => {
               </DialogHeader>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="patientID"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Patient</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select patient" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {patients?.map((patient) => (
-                                <SelectItem key={patient.patientid} value={patient.patientid.toString()}>
-                                  {patient.Name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="patientID"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Patient *</FormLabel>
+                        <PatientCombobox
+                          value={field.value}
+                          onChange={field.onChange}
+                          open={patientSearchOpen}
+                          setOpen={setPatientSearchOpen}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
+                  <FormField
+                    control={form.control}
+                    name="visitDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Visit Date *</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="doctorID"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Doctor</FormLabel>
+                          <FormLabel>Doctor *</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -250,7 +392,7 @@ const Visits = () => {
                             <SelectContent>
                               {doctors?.map((doctor) => (
                                 <SelectItem key={doctor.doctorID} value={doctor.doctorID.toString()}>
-                                  {doctor.Name} - {doctor.Speciality}
+                                  {doctor.Name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -259,15 +401,13 @@ const Visits = () => {
                         </FormItem>
                       )}
                     />
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="clinicLocationID"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Clinic Location</FormLabel>
+                          <FormLabel>Location *</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value}>
                             <FormControl>
                               <SelectTrigger>
@@ -286,130 +426,50 @@ const Visits = () => {
                         </FormItem>
                       )}
                     />
+                  </div>
 
-                    <FormField
-                      control={form.control}
-                      name="visitTypeID"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Visit Type</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select visit type" />
-                              </SelectTrigger>
-                            </FormControl>
-                  <SelectContent>
-                    {isLoadingVisitTypes && (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                  <FormField
+                    control={form.control}
+                    name="visitTypeID"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Visit Type *</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select visit type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {visitTypes?.map((type) => (
+                              <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
+                                {type.Description}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                    {visitTypesError && (
-                      <SelectItem value="error" disabled>Error loading visit types</SelectItem>
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="DoctorNotes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Enter visit notes..." 
+                            className="min-h-[100px]"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
                     )}
-                    {visitTypes && visitTypes.length > 0 ? (
-                      visitTypes.map((type) => (
-                        <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
-                          {type.Description}
-                        </SelectItem>
-                      ))
-                    ) : !isLoadingVisitTypes && !visitTypesError ? (
-                      <SelectItem value="empty" disabled>No visit types found</SelectItem>
-                    ) : null}
-                  </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                    <FormField
-                      control={form.control}
-                      name="DoctorNotes"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Doctor Notes (Optional)</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
-                              className="min-h-[100px]"
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="Fee"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Consultation Fee (Optional)</FormLabel>
-                          <FormControl>
-                            <Input type="number" step="0.01" placeholder="500.00" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="Followup"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Follow-up Date (Optional)</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="prescriptionImage1"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <FormItem>
-                          <FormLabel>Prescription Image 1 (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => onChange(e.target.files)}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="prescriptionImage2"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <FormItem>
-                          <FormLabel>Prescription Image 2 (Optional)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => onChange(e.target.files)}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  />
 
                   <div className="flex justify-end gap-3 pt-4">
                     <Button
@@ -438,300 +498,388 @@ const Visits = () => {
             <p className="text-muted-foreground">Loading visits...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {visits?.map((visit, index) => (
-              <Card
-                key={visit.visitID}
-                className="shadow-card hover:shadow-elevated transition-all duration-300 animate-fade-in border-border"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-xl font-semibold text-foreground mb-1">
-                        {visit.patientName || `Patient ID: ${visit.patientID}`}
-                      </CardTitle>
-                      <p className="text-sm text-primary font-medium">
-                        {visit.doctorName || `Doctor ID: ${visit.doctorID}`}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Badge className={getStatusColor(getStatusFromDate(visit.Followup))}>
-                        {getStatusFromDate(visit.Followup)}
-                      </Badge>
-                      {visit.isCompleted && (
-                        <Badge className="bg-green-500 text-white">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Completed
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center text-sm">
-                      <Calendar className="w-4 h-4 mr-2 text-primary" />
-                      <div>
-                        <p className="text-muted-foreground text-xs">Follow-up</p>
-                        <p className="font-medium text-foreground">
-                          {new Date(visit.Followup).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {visit.DoctorNotes && (
-                    <div className="flex items-start text-sm">
-                      <FileText className="w-4 h-4 mr-2 text-primary mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-muted-foreground text-xs">Doctor's Notes</p>
-                        <p className="text-foreground">{visit.DoctorNotes}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {visit.Fee && (
-                    <div className="flex items-center text-sm">
-                      <DollarSign className="w-4 h-4 mr-2 text-primary" />
-                      <div>
-                        <p className="text-muted-foreground text-xs">Fee</p>
-                        <p className="font-medium text-foreground">₹{visit.Fee}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-4 border-t border-border">
-                    <p className="text-xs text-muted-foreground mb-1">Location</p>
-                    <p className="text-sm font-medium text-foreground">
-                      {visit.locationName || `Location ID: ${visit.clinicLocationID}`}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      variant="outline" 
-                      className="flex-1 border-primary text-primary hover:bg-accent"
-                      onClick={() => {
-                        setSelectedVisit(visit);
-                        setViewDialogOpen(true);
-                      }}
+          <div className="space-y-8">
+            {/* Pending Visits */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-5 h-5 text-secondary" />
+                <h2 className="text-2xl font-semibold text-foreground">
+                  Pending Visits
+                </h2>
+                <Badge variant="secondary" className="ml-2">
+                  {pendingVisits.length}
+                </Badge>
+              </div>
+              {pendingVisits.length === 0 ? (
+                <Card className="shadow-card">
+                  <CardContent className="py-12 text-center">
+                    <p className="text-muted-foreground">No pending visits</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {pendingVisits.map((visit, index) => (
+                    <Card
+                      key={visit.visitID}
+                      className="shadow-card hover:shadow-elevated transition-all duration-300 animate-fade-in border-l-4 border-l-secondary"
+                      style={{ animationDelay: `${index * 50}ms` }}
                     >
-                      View Details
-                    </Button>
-                    {!visit.isCompleted && (
-                      <Button 
-                        variant="outline" 
-                        className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={() => {
-                          setSelectedVisit(visit);
-                          completeForm.setValue('DoctorNotes', visit.DoctorNotes || '');
-                          completeForm.setValue('Fee', visit.Fee ? visit.Fee.toString() : '');
-                          setCompleteDialogOpen(true);
-                        }}
-                      >
-                        Complete Visit
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-xl font-semibold text-foreground mb-1">
+                              {visit.patientName || `Patient ID: ${visit.patientID}`}
+                            </CardTitle>
+                            <p className="text-sm text-primary font-medium">
+                              {visit.doctorName || `Doctor ID: ${visit.doctorID}`}
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="ml-2">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {visit.visitDate && (
+                            <div className="flex items-center text-sm text-muted-foreground">
+                              <Calendar className="w-4 h-4 mr-2" />
+                              {format(new Date(visit.visitDate), "PPP")}
+                            </div>
+                          )}
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <FileText className="w-4 h-4 mr-2" />
+                            {visit.visitTypeName || "Regular Visit"}
+                          </div>
+                          {visit.DoctorNotes && (
+                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                              {visit.DoctorNotes}
+                            </p>
+                          )}
+                          <div className="flex gap-2 mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditVisit(visit)}
+                              className="flex-1"
+                            >
+                              <Edit className="w-4 h-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleCompleteVisit(visit)}
+                              className="flex-1 bg-gradient-primary hover:opacity-90"
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-1" />
+                              Complete
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Completed Visits */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                <h2 className="text-2xl font-semibold text-foreground">
+                  Completed Visits
+                </h2>
+                <Badge className="ml-2 bg-primary text-primary-foreground">
+                  {completedVisits.length}
+                </Badge>
+              </div>
+              {completedVisits.length === 0 ? (
+                <Card className="shadow-card">
+                  <CardContent className="py-12 text-center">
+                    <p className="text-muted-foreground">No completed visits</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {completedVisits.map((visit, index) => (
+                    <Card
+                      key={visit.visitID}
+                      className="shadow-card hover:shadow-elevated transition-all duration-300 animate-fade-in border-l-4 border-l-primary opacity-80"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-xl font-semibold text-foreground mb-1">
+                              {visit.patientName || `Patient ID: ${visit.patientID}`}
+                            </CardTitle>
+                            <p className="text-sm text-primary font-medium">
+                              {visit.doctorName || `Doctor ID: ${visit.doctorID}`}
+                            </p>
+                          </div>
+                          <Badge className="ml-2 bg-primary text-primary-foreground">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Completed
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {visit.visitDate && (
+                            <div className="flex items-center text-sm text-muted-foreground">
+                              <Calendar className="w-4 h-4 mr-2" />
+                              {format(new Date(visit.visitDate), "PPP")}
+                            </div>
+                          )}
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <FileText className="w-4 h-4 mr-2" />
+                            {visit.visitTypeName || "Regular Visit"}
+                          </div>
+                          {visit.Fee && (
+                            <div className="flex items-center text-sm font-medium text-foreground">
+                              <DollarSign className="w-4 h-4 mr-2" />
+                              ₹{visit.Fee}
+                            </div>
+                          )}
+                          {visit.DoctorNotes && (
+                            <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                              {visit.DoctorNotes}
+                            </p>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
-
-        {!isLoading && (!visits || visits.length === 0) && (
-          <Card className="shadow-card">
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No visits found in the system.</p>
-            </CardContent>
-          </Card>
-        )}
-
-        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Visit Details</DialogTitle>
-              <DialogDescription>
-                Complete visit information and prescription images
-              </DialogDescription>
-            </DialogHeader>
-            {selectedVisit && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Patient</p>
-                    <p className="font-medium">{selectedVisit.patientName || `ID: ${selectedVisit.patientID}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Doctor</p>
-                    <p className="font-medium">{selectedVisit.doctorName || `ID: ${selectedVisit.doctorID}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Location</p>
-                    <p className="font-medium">{selectedVisit.locationName || `ID: ${selectedVisit.clinicLocationID}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Visit Type</p>
-                    <p className="font-medium">{selectedVisit.visitTypeName || `ID: ${selectedVisit.visitTypeID}`}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Fee</p>
-                    <p className="font-medium">{selectedVisit.Fee ? `₹${selectedVisit.Fee}` : 'Not set'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Follow-up Date</p>
-                    <p className="font-medium">{new Date(selectedVisit.Followup).toLocaleDateString()}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Doctor's Notes</p>
-                  <p className="text-foreground bg-muted p-3 rounded-md">{selectedVisit.DoctorNotes || 'No notes added'}</p>
-                </div>
-
-                {(selectedVisit.prescriptionImage1 || selectedVisit.prescriptionImage2) && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
-                      <ImageIcon className="w-4 h-4" />
-                      Prescription Images
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedVisit.prescriptionImage1 && (
-                        <div className="border rounded-lg overflow-hidden">
-                          <img 
-                            src={selectedVisit.prescriptionImage1} 
-                            alt="Prescription 1" 
-                            className="w-full h-auto"
-                          />
-                        </div>
-                      )}
-                      {selectedVisit.prescriptionImage2 && (
-                        <div className="border rounded-lg overflow-hidden">
-                          <img 
-                            src={selectedVisit.prescriptionImage2} 
-                            alt="Prescription 2" 
-                            className="w-full h-auto"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end pt-4">
-                  <Button onClick={() => setViewDialogOpen(false)}>
-                    Close
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Complete Visit</DialogTitle>
-              <DialogDescription>
-                Add doctor notes and consultation fee to complete this visit
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...completeForm}>
-              <form onSubmit={completeForm.handleSubmit(onCompleteSubmit)} className="space-y-4">
-                <FormField
-                  control={completeForm.control}
-                  name="DoctorNotes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Doctor Notes *</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
-                          className="min-h-[120px]"
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={completeForm.control}
-                  name="Fee"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Consultation Fee *</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" placeholder="500.00" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={completeForm.control}
-                    name="prescriptionImage1"
-                    render={({ field: { value, onChange, ...field } }) => (
-                      <FormItem>
-                        <FormLabel>Prescription Image 1 (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => onChange(e.target.files)}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={completeForm.control}
-                    name="prescriptionImage2"
-                    render={({ field: { value, onChange, ...field } }) => (
-                      <FormItem>
-                        <FormLabel>Prescription Image 2 (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => onChange(e.target.files)}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setCompleteDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-gradient-primary hover:opacity-90"
-                    disabled={completeVisitMutation.isPending}
-                  >
-                    {completeVisitMutation.isPending ? "Completing..." : "Complete Visit"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Visit</DialogTitle>
+            <DialogDescription>
+              Update visit details for {selectedVisit?.patientName}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="patientID"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Patient *</FormLabel>
+                    <PatientCombobox
+                      value={field.value}
+                      onChange={field.onChange}
+                      open={editPatientSearchOpen}
+                      setOpen={setEditPatientSearchOpen}
+                    />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="visitDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Visit Date *</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="doctorID"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Doctor *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select doctor" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {doctors?.map((doctor) => (
+                            <SelectItem key={doctor.doctorID} value={doctor.doctorID.toString()}>
+                              {doctor.Name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={editForm.control}
+                  name="clinicLocationID"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select location" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {locations?.map((location) => (
+                            <SelectItem key={location.LocationID} value={location.LocationID.toString()}>
+                              {location.LocationName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={editForm.control}
+                name="visitTypeID"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Visit Type *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select visit type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {visitTypes?.map((type) => (
+                          <SelectItem key={type.visitTypeID} value={type.visitTypeID.toString()}>
+                            {type.Description}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="DoctorNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Enter visit notes..." 
+                        className="min-h-[100px]"
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-gradient-primary hover:opacity-90"
+                  disabled={updateVisitMutation.isPending}
+                >
+                  {updateVisitMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Visit Dialog */}
+      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Complete Visit</DialogTitle>
+            <DialogDescription>
+              Add final notes and fee to complete this visit.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...completeForm}>
+            <form onSubmit={completeForm.handleSubmit(onCompleteSubmit)} className="space-y-4">
+              <FormField
+                control={completeForm.control}
+                name="DoctorNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Doctor Notes *</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Enter consultation notes, diagnosis, and treatment plan..." 
+                        className="min-h-[150px]"
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={completeForm.control}
+                name="Fee"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Consultation Fee *</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="500.00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCompleteDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-gradient-primary hover:opacity-90"
+                  disabled={completeVisitMutation.isPending}
+                >
+                  {completeVisitMutation.isPending ? "Completing..." : "Complete Visit"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

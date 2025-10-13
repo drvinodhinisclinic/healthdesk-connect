@@ -27,8 +27,8 @@ You need to create a Node.js/Express backend with the following endpoints:
 ### Visit Endpoints
 - `GET /api/visits` - Get all visits (with JOIN to get patient, doctor, location names)
 - `GET /api/visits/:id` - Get visit by ID
-- `POST /api/visits` - Create new visit (DoctorNotes and Fee are optional, isCompleted defaults to 0)
-- `PUT /api/visits/:id` - Update visit (Use this to complete a visit by setting isCompleted=1 with required DoctorNotes and Fee)
+- `POST /api/visits` - Create new visit (visitDate is required, DoctorNotes and Fee are optional, IsCompleted defaults to 0)
+- `PUT /api/visits/:id` - Update visit (Use this to complete a visit by setting IsCompleted=1 with required DoctorNotes and Fee, or to edit pending visits)
 - `DELETE /api/visits/:id` - Delete visit
 
 ### Location Endpoints
@@ -192,7 +192,7 @@ app.get('/api/visits', (req, res) => {
     LEFT JOIN tbldoctors d ON v.doctorID = d.doctorID
     LEFT JOIN tblcliniclocation l ON v.clinicLocationID = l.LocationID
     LEFT JOIN tblvisittype vt ON v.visitTypeID = vt.visitTypeID
-    ORDER BY v.Followup DESC
+    ORDER BY v.visitDate DESC, v.visitID DESC
   \`;
   
   db.query(query, (err, results) => {
@@ -202,10 +202,10 @@ app.get('/api/visits', (req, res) => {
 });
 
 app.post('/api/visits', (req, res) => {
-  const { patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2 } = req.body;
+  const { patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2 } = req.body;
   db.query(
-    'INSERT INTO tblvisits (patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2, isCompleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-    [patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes || null, Followup || null, Fee || null, prescriptionImage1 || null, prescriptionImage2 || null],
+    'INSERT INTO tblvisits (patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2, IsCompleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+    [patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes || null, Followup || null, Fee || null, prescriptionImage1 || null, prescriptionImage2 || null],
     (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
       res.status(201).json({ visitID: result.insertId, ...req.body });
@@ -214,10 +214,30 @@ app.post('/api/visits', (req, res) => {
 });
 
 app.put('/api/visits/:id', (req, res) => {
-  const { DoctorNotes, Fee, isCompleted, prescriptionImage1, prescriptionImage2 } = req.body;
+  const { patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Fee, IsCompleted, prescriptionImage1, prescriptionImage2 } = req.body;
   const updates = [];
   const values = [];
   
+  if (patientID !== undefined) {
+    updates.push('patientID = ?');
+    values.push(patientID);
+  }
+  if (doctorID !== undefined) {
+    updates.push('doctorID = ?');
+    values.push(doctorID);
+  }
+  if (clinicLocationID !== undefined) {
+    updates.push('clinicLocationID = ?');
+    values.push(clinicLocationID);
+  }
+  if (visitTypeID !== undefined) {
+    updates.push('visitTypeID = ?');
+    values.push(visitTypeID);
+  }
+  if (visitDate !== undefined) {
+    updates.push('visitDate = ?');
+    values.push(visitDate);
+  }
   if (DoctorNotes !== undefined) {
     updates.push('DoctorNotes = ?');
     values.push(DoctorNotes);
@@ -226,9 +246,9 @@ app.put('/api/visits/:id', (req, res) => {
     updates.push('Fee = ?');
     values.push(Fee);
   }
-  if (isCompleted !== undefined) {
-    updates.push('isCompleted = ?');
-    values.push(isCompleted);
+  if (IsCompleted !== undefined) {
+    updates.push('IsCompleted = ?');
+    values.push(IsCompleted);
   }
   if (prescriptionImage1 !== undefined) {
     updates.push('prescriptionImage1 = ?');
