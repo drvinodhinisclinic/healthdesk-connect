@@ -214,7 +214,7 @@ app.post('/api/visits', (req, res) => {
 });
 
 app.put('/api/visits/:id', (req, res) => {
-  const { patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Fee, IsCompleted, prescriptionImage1, prescriptionImage2 } = req.body;
+  const { patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Fee, Followup, IsCompleted, prescriptionImage1, prescriptionImage2 } = req.body;
   const updates = [];
   const values = [];
   
@@ -245,6 +245,10 @@ app.put('/api/visits/:id', (req, res) => {
   if (Fee !== undefined) {
     updates.push('Fee = ?');
     values.push(Fee);
+  }
+  if (Followup !== undefined) {
+    updates.push('Followup = ?');
+    values.push(Followup);
   }
   if (IsCompleted !== undefined) {
     updates.push('IsCompleted = ?');
