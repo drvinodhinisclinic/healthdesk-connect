@@ -116,7 +116,7 @@ app.get('/api/dashboard/stats', (req, res) => {
 });
 
 app.get('/api/dashboard/activity', (req, res) => {
-  const query = \`
+  const query = `
     SELECT 
       v.visitID as id,
       p.Name as patientName,
@@ -128,7 +128,7 @@ app.get('/api/dashboard/activity', (req, res) => {
     LEFT JOIN tbldoctors d ON v.doctorID = d.doctorID
     ORDER BY v.lastModified DESC
     LIMIT 10
-  \`;
+  `;
   
   db.query(query, (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -180,7 +180,38 @@ app.get('/api/doctors/:id', (req, res) => {
 
 // ===== VISIT ENDPOINTS =====
 app.get('/api/visits', (req, res) => {
-  const query = \`
+  const query = `
+    SELECT 
+      v.*,
+      p.Name as patientName,
+      d.Name as doctorName,
+      l.LocationName as locationName,
+      vt.Description as visitTypeName
+    FROM tblvisits v
+    LEFT JOIN tblpatient p ON v.patientID = p.patientid
+    LEFT JOIN tbldoctors d ON v.doctorID = d.doctorID
+    LEFT JOIN tblcliniclocation l ON v.clinicLocationID = l.LocationID
+    LEFT JOIN tblvisittype vt ON v.visitTypeID = vt.visitTypeID
+    ORDER BY v.Followup DESC
+  `;
+  
+  db.query(query, (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+// ===== LOCATION ENDPOINTS =====
+app.get('/api/locations', (req, res) => {
+  db.query('SELECT * FROM tblcliniclocation', (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results);
+  });
+});
+
+// ===== VISIT TYPE ENDPOINTS =====
+app.get('/api/visits', (req, res) => {
+  const query = `
     SELECT 
       v.*,
       p.Name as patientName,
@@ -193,7 +224,7 @@ app.get('/api/visits', (req, res) => {
     LEFT JOIN tblcliniclocation l ON v.clinicLocationID = l.LocationID
     LEFT JOIN tblvisittype vt ON v.visitTypeID = vt.visitTypeID
     ORDER BY v.visitDate DESC, v.visitID DESC
-  \`;
+  `;
   
   db.query(query, (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -266,21 +297,13 @@ app.put('/api/visits/:id', (req, res) => {
   values.push(req.params.id);
   
   db.query(
-    \`UPDATE tblvisits SET \${updates.join(', ')} WHERE visitID = ?\`,
+    `UPDATE tblvisits SET \${updates.join(', ')} WHERE visitID = ?`,
     values,
     (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Visit updated successfully' });
     }
   );
-});
-
-// ===== LOCATION ENDPOINTS =====
-app.get('/api/locations', (req, res) => {
-  db.query('SELECT * FROM tblcliniclocation', (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
 });
 
 // ===== VISIT TYPE ENDPOINTS =====
@@ -293,7 +316,7 @@ app.get('/api/visittypes', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(\`Server running on http://localhost:\${PORT}\`);
+  console.log(`Server running on http://localhost:\${PORT}`);
 });
 \`\`\`
 
