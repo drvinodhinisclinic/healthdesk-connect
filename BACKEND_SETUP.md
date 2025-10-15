@@ -233,10 +233,10 @@ app.get('/api/visits', (req, res) => {
 });
 
 app.post('/api/visits', (req, res) => {
-  const { patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2 } = req.body;
+  const { patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2 } = req.body;
   db.query(
-    'INSERT INTO tblvisits (patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2, IsCompleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
-    [patientID, doctorID, clinicLocationID, visitTypeID, visitDate, DoctorNotes || null, Followup || null, Fee || null, prescriptionImage1 || null, prescriptionImage2 || null],
+    'INSERT INTO tblvisits (patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes, Followup, Fee, prescriptionImage1, prescriptionImage2, IsCompleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+    [patientID, doctorID, clinicLocationID, visitTypeID, DoctorNotes || null, Followup || null, Fee || null, prescriptionImage1 || null, prescriptionImage2 || null],
     (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
       res.status(201).json({ visitID: result.insertId, ...req.body });

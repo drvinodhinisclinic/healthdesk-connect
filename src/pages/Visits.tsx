@@ -202,9 +202,8 @@ const Visits = () => {
       doctorID: parseInt(data.doctorID),
       clinicLocationID: parseInt(data.clinicLocationID),
       visitTypeID: parseInt(data.visitTypeID),
-      visitDate: data.visitDate,
       DoctorNotes: data.DoctorNotes || null,
-      Followup: null,
+      Followup: data.visitDate, // Use visitDate as Followup since database doesn't have visitDate column
       Fee: null,
       prescriptionImage1: null,
       prescriptionImage2: null,
