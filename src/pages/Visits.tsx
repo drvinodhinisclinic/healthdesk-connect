@@ -256,15 +256,15 @@ const Visits = () => {
     setCompleteDialogOpen(true);
   };
 
-  // Group and sort visits
-  const pendingVisits = visits?.filter(v => v.IsCompleted === 0)
+  // Group and sort visits (handle IsCompleted as number, string, or boolean)
+  const pendingVisits = visits?.filter(v => !v.IsCompleted || v.IsCompleted === 0 || v.IsCompleted === "0")
     .sort((a, b) => {
       const dateA = new Date(a.visitDate || 0).getTime();
       const dateB = new Date(b.visitDate || 0).getTime();
       return dateB - dateA;
     }) || [];
 
-  const completedVisits = visits?.filter(v => v.IsCompleted === 1)
+  const completedVisits = visits?.filter(v => v.IsCompleted === 1 || v.IsCompleted === "1" || v.IsCompleted === true)
     .sort((a, b) => {
       const dateA = new Date(a.visitDate || 0).getTime();
       const dateB = new Date(b.visitDate || 0).getTime();

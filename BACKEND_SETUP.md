@@ -294,16 +294,33 @@ app.put('/api/visits/:id', (req, res) => {
     values.push(prescriptionImage2);
   }
   
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+  
   values.push(req.params.id);
   
   db.query(
-    `UPDATE tblvisits SET \${updates.join(', ')} WHERE visitID = ?`,
+    `UPDATE tblvisits SET ${updates.join(', ')} WHERE visitID = ?`,
     values,
     (err, result) => {
       if (err) return res.status(500).json({ error: err.message });
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Visit not found' });
+      }
       res.json({ message: 'Visit updated successfully' });
     }
   );
+});
+
+app.delete('/api/visits/:id', (req, res) => {
+  db.query('DELETE FROM tblvisits WHERE visitID = ?', [req.params.id], (err, result) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+    res.json({ message: 'Visit deleted successfully' });
+  });
 });
 
 // ===== VISIT TYPE ENDPOINTS =====

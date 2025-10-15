@@ -126,7 +126,7 @@ export interface Visit {
   doctorID: number;
   visitTypeID: number;
   clinicLocationID: number;
-  IsCompleted: number;
+  IsCompleted: number | string | boolean;
   visitDate?: string;
   // Joined data
   patientName?: string;
